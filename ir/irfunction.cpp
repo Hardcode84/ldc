@@ -56,7 +56,7 @@ bool isIrFuncCreated(FuncDeclaration *decl) {
 
 llvm::Function *getLLFunc(IrFunction *irFunc) {
   assert(nullptr != irFunc);
-  return irFunc->func;
+  return (nullptr != irFunc->rtCompileFunc ? irFunc->rtCompileFunc : irFunc->func);
 }
 
 llvm::Function *getLLFunc(FuncDeclaration *decl, bool create) {

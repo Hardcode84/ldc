@@ -88,6 +88,8 @@ extern cl::opt<std::string> genfileInstrProf;
 extern cl::opt<std::string> usefileInstrProf;
 #endif
 
+extern cl::opt<bool> enableRuntimeCompile;
+
 // Arguments to -d-debug
 extern std::vector<std::string> debugArgs;
 // Arguments to -run

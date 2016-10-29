@@ -38,6 +38,7 @@
 #include "gen/runtime.h"
 #include "gen/tollvm.h"
 #include "gen/uda.h"
+#include "gen/runtimecompile.h"
 #include "ir/irfunction.h"
 #include "ir/irmodule.h"
 #include "llvm/IR/Intrinsics.h"
@@ -430,6 +431,19 @@ void applyDefaultMathAttributes(IrFunction *irFunc) {
   // See https://llvm.org/bugs/show_bug.cgi?id=23172
   irFunc->func->addFnAttr("unsafe-fp-math", "false");
 }
+
+LLFunction* getFunction(llvm::Module& module, LLFunctionType *functype, const std::string& name) {
+  assert(nullptr != functype);
+  LLFunction* func = module.getFunction(name);
+  if (!func) {
+    // All function declarations are "external" - any other linkage type
+    // is set when actually defining the function.
+    func = LLFunction::Create(functype, llvm::GlobalValue::ExternalLinkage,
+                              name, &module);
+  }
+  return func;
+}
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -491,17 +505,14 @@ void DtoDeclareFunction(FuncDeclaration *fdecl) {
   }
 
   // mangled name
-  std::string mangledName = getMangledName(fdecl, link);
+  const std::string mangledName = getMangledName(fdecl, link);
 
   // construct function
   LLFunctionType *functype = DtoFunctionType(fdecl);
-  LLFunction *func = vafunc ? vafunc : gIR->module.getFunction(mangledName);
-  if (!func) {
-    // All function declarations are "external" - any other linkage type
-    // is set when actually defining the function.
-    func = LLFunction::Create(functype, llvm::GlobalValue::ExternalLinkage,
-                              mangledName, &gIR->module);
-  } else if (func->getFunctionType() != functype) {
+  //it will be real function or stub in case of @runtimeCompile function
+  LLFunction *func = vafunc ? vafunc : getFunction(gIR->module, functype, mangledName);
+  assert(nullptr != func);
+  if (func->getFunctionType() != functype) {
     error(fdecl->loc, "Function type does not match previously declared "
                       "function with the same mangled name: %s",
           mangleExact(fdecl));
@@ -527,6 +538,10 @@ void DtoDeclareFunction(FuncDeclaration *fdecl) {
   // by UDAs.
   applyDefaultMathAttributes(irFunc);
   applyFuncDeclUDAs(fdecl, irFunc);
+
+  if(irFunc->runtimeCompile) {
+    addRuntimeCompiledFunction(gIR, irFunc);
+  }
 
   // main
   if (fdecl->isMain()) {

@@ -197,6 +197,14 @@ struct IRState {
   llvm::StringMap<llvm::GlobalVariable *> stringLiteral2ByteCache;
   llvm::StringMap<llvm::GlobalVariable *> stringLiteral4ByteCache;
 
+  struct RtCompiledFuncDesc {
+    llvm::Function* srcFunc;
+    llvm::GlobalVariable* thunkVar;
+    llvm::Function* thunkFunc;
+  };
+
+  std::vector<RtCompiledFuncDesc> runtimeCompiledFunctions;
+
 /// Vector of options passed to the linker as metadata in object file.
 #if LDC_LLVM_VER >= 306
   llvm::SmallVector<llvm::Metadata *, 5> LinkerMetadataArgs;

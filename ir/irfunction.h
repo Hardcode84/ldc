@@ -71,6 +71,9 @@ struct IrFunction {
   /// Stores the FastMath options for this functions.
   /// These are set e.g. by math related UDA's from ldc.attributes.
   llvm::FastMathFlags FMF;
+
+  bool runtimeCompile = false;
+  llvm::Function *rtCompileFunc = nullptr;
 };
 
 IrFunction *getIrFunc(FuncDeclaration *decl, bool create = false);

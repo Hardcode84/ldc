@@ -135,6 +135,19 @@ void insertBitcodeFiles(llvm::Module &M, llvm::LLVMContext &Ctx,
 #endif
 }
 
+#define STR_(val) #val
+#define STR(val) STR_(val)
+
+void addRtCompileLibs(std::vector<std::string>& args, bool isMsvc) {
+  if (isMsvc) {
+    args.push_back("ldc-rtcompile-rt.lib");
+    args.push_back("rtcompile.lib");
+  }
+  else {
+    args.push_back("-lldc-rtcompile-rt");
+    args.push_back("-lrtcompile");
+  }
+}
 //////////////////////////////////////////////////////////////////////////////
 
 static void appendObjectFiles(std::vector<std::string> &args) {
@@ -177,6 +190,10 @@ static int linkObjToBinaryGcc(bool sharedLib, bool fullyStatic) {
     }
 #endif
     args.push_back("-lldc-profile-rt");
+  }
+
+  if (global.params.enableRuntimeCompile) {
+    addRtCompileLibs(args, false);
   }
 
   // user libs
@@ -612,6 +629,10 @@ static int linkObjToBinaryMSVC(bool sharedLib) {
     args.push_back("ldc-profile-rt.lib");
     // profile-rt depends on ws2_32 for symbol `gethostname`
     args.push_back("ws2_32.lib");
+  }
+
+  if (global.params.enableRuntimeCompile) {
+    addRtCompileLibs(args, true);
   }
 
   // user libs

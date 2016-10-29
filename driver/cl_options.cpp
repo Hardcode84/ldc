@@ -454,6 +454,11 @@ cl::opt<std::string> usefileInstrProf(
     cl::ValueRequired);
 #endif
 
+cl::opt<bool> enableRuntimeCompile(
+    "enable-runtime-compile",
+    cl::desc("Enable runtime compilation"),
+    cl::init(false));
+
 static cl::extrahelp footer(
     "\n"
     "-d-debug can also be specified without options, in which case it enables "

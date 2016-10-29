@@ -21,14 +21,17 @@ const std::string optStrategy = "optStrategy";
 const std::string section = "section";
 const std::string target = "target";
 const std::string weak = "_weak";
+const std::string runtimeCompile = "_runtimeCompile";
 }
 
 /// Checks whether `moduleDecl` is the ldc.attributes module.
 bool isLdcAttibutes(const ModuleDeclaration *moduleDecl) {
-  if (!moduleDecl)
+  if (!moduleDecl) {
     return false;
+  }
 
-  if (strcmp("attributes", moduleDecl->id->string)) {
+  if ((0 != strcmp("attributes", moduleDecl->id->string)) &&
+      (0 != strcmp("runtimecompile", moduleDecl->id->string))) {
     return false;
   }
 
@@ -296,6 +299,8 @@ void applyFuncDeclUDAs(FuncDeclaration *decl, IrFunction *irFunc) {
       applyAttrTarget(sle, func);
     } else if (name == attr::weak) {
       // @weak is applied elsewhere
+    } else if (name == attr::runtimeCompile) {
+      irFunc->runtimeCompile = true;
     } else {
       sle->warning(
           "ignoring unrecognized special attribute 'ldc.attributes.%s'",

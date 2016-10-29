@@ -51,6 +51,7 @@ get_directory_property(PROJECT_PARENT_DIR DIRECTORY ${PROJECT_SOURCE_DIR} PARENT
 set(RUNTIME_DIR ${PROJECT_SOURCE_DIR}/druntime CACHE PATH "druntime root directory")
 set(PHOBOS2_DIR ${PROJECT_SOURCE_DIR}/phobos CACHE PATH "Phobos root directory")
 set(PROFILERT_DIR ${PROJECT_SOURCE_DIR}/profile-rt CACHE PATH "profile-rt root directory")
+set(RTCOMPILE_DIR ${PROJECT_SOURCE_DIR}/rtcompile-rt CACHE PATH "runtime compile runtime root directory")
 
 #
 # Gather source files.
@@ -508,10 +509,14 @@ macro(build_runtime_variants d_flags c_flags ld_flags path_suffix outlist_target
         ${outlist_targets}
     )
     build_profile_runtime ("${d_flags}" "${c_flags}" "${ld_flags}" "${path_suffix}" ${outlist_targets})
+    build_compile_runtime ("${d_flags}" "${c_flags}" "${ld_flags}" "${path_suffix}" ${outlist_targets})
 endmacro()
 
 # Setup the build of profile-rt
 include(profile-rt/DefineBuildProfileRT.cmake)
+
+# Setup the build of rtcompile runtime
+include(rtcompile-rt/DefineBuildCompileRT.cmake)
 
 #
 # Set up build targets.
@@ -764,7 +769,7 @@ function(add_tests d_files runner name_suffix)
         )
         set_tests_properties("${module}${name_suffix}" PROPERTIES
             DEPENDS build-${runner}-test-runner${name_suffix}
-	)
+        )
     endforeach()
 endfunction()
 function(add_runtime_tests name_suffix)
