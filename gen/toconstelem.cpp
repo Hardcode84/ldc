@@ -508,9 +508,9 @@ public:
       // added
       // to the module member list.
       Declaration_codegen(fd, p);
-      assert(getIrFunc(fd)->func);
+      assert(getLLFunc(fd));
 
-      result = getIrFunc(fd)->func;
+      result = getLLFunc(fd);
     }
   }
 

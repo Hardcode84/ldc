@@ -75,5 +75,7 @@ struct IrFunction {
 
 IrFunction *getIrFunc(FuncDeclaration *decl, bool create = false);
 bool isIrFuncCreated(FuncDeclaration *decl);
+llvm::Function *getLLFunc(IrFunction *irFunc);
+llvm::Function *getLLFunc(FuncDeclaration *decl, bool create = false);
 
 #endif

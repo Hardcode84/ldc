@@ -187,7 +187,7 @@ LLConstant *IrAggr::getVtblInit() {
     } else {
       DtoResolveFunction(fd);
       assert(isIrFuncCreated(fd) && "invalid vtbl function");
-      c = getIrFunc(fd)->func;
+      c = getLLFunc(fd);
       if (cd->isFuncHidden(fd)) {
         // fd is hidden from the view of this class. If fd overlaps with any
         // function in the vtbl[], issue error.

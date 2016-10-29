@@ -53,3 +53,12 @@ bool isIrFuncCreated(FuncDeclaration *decl) {
   assert(t == IrDsymbol::FuncType || t == IrDsymbol::NotSet);
   return t == IrDsymbol::FuncType;
 }
+
+llvm::Function *getLLFunc(IrFunction *irFunc) {
+  assert(nullptr != irFunc);
+  return irFunc->func;
+}
+
+llvm::Function *getLLFunc(FuncDeclaration *decl, bool create) {
+  return getLLFunc(getIrFunc(decl, create));
+}

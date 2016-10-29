@@ -1354,7 +1354,7 @@ void callPostblit(Loc &loc, Expression *exp, LLValue *val) {
       }
       DtoResolveFunction(fd);
       Expressions args;
-      DFuncValue dfn(fd, getIrFunc(fd)->func, val);
+      DFuncValue dfn(fd, getLLFunc(fd), val);
       DtoCallFunction(loc, Type::basic[Tvoid], &dfn, &args);
     }
   }
@@ -1559,9 +1559,9 @@ DValue *DtoSymbolAddress(Loc &loc, Type *type, Declaration *decl) {
     // We need to codegen the function here, because literals are not added
     // to the module member list.
     DtoDefineFunction(flitdecl);
-    assert(getIrFunc(flitdecl)->func);
+    assert(getLLFunc(flitdecl));
 
-    return new DFuncValue(flitdecl, getIrFunc(flitdecl)->func);
+    return new DFuncValue(flitdecl, getLLFunc(flitdecl));
   }
 
   if (FuncDeclaration *fdecl = decl->isFuncDeclaration()) {
@@ -1578,7 +1578,7 @@ DValue *DtoSymbolAddress(Loc &loc, Type *type, Declaration *decl) {
     }
     DtoResolveFunction(fdecl);
     return new DFuncValue(fdecl, fdecl->llvmInternal != LLVMva_arg
-                                     ? getIrFunc(fdecl)->func
+                                     ? getLLFunc(fdecl)
                                      : nullptr);
   }
 
@@ -1632,7 +1632,7 @@ llvm::Constant *DtoConstSymbolAddress(Loc &loc, Declaration *decl) {
   // static function
   if (FuncDeclaration *fd = decl->isFuncDeclaration()) {
     DtoResolveFunction(fd);
-    return getIrFunc(fd)->func;
+    return getLLFunc(fd);
   }
 
   llvm_unreachable("Taking constant address not implemented.");

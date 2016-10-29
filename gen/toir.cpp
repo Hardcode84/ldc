@@ -701,7 +701,7 @@ public:
       FuncDeclaration *fdecl = dve->var->isFuncDeclaration();
       assert(fdecl);
       DtoResolveFunction(fdecl);
-      fnval = new DFuncValue(fdecl, getIrFunc(fdecl)->func, DtoRVal(dve->e1));
+      fnval = new DFuncValue(fdecl, getLLFunc(fdecl), DtoRVal(dve->e1));
     } else {
       fnval = toElem(e->e1);
     }
@@ -850,7 +850,7 @@ public:
       FuncDeclaration *fd = fv->func;
       assert(fd);
       DtoResolveFunction(fd);
-      result = new DFuncValue(fd, getIrFunc(fd)->func);
+      result = new DFuncValue(fd, getLLFunc(fd));
       return;
     }
     if (v->isIm()) {
@@ -959,7 +959,7 @@ public:
       if (nonFinal) {
         funcval = DtoVirtualFunctionPointer(l, fdecl, e->toChars());
       } else {
-        funcval = getIrFunc(fdecl)->func;
+        funcval = getLLFunc(fdecl);
       }
       assert(funcval);
 
@@ -1414,7 +1414,7 @@ public:
     // The real part of the complex number has already been updated, skip the
     // store
     if (!e1type->iscomplex()) {
-	DtoStore(post, lval);
+  DtoStore(post, lval);
     }
     result = new DImValue(e->type, val);
   }
@@ -1476,7 +1476,7 @@ public:
       if (e->allocator) {
         // custom allocator
         DtoResolveFunction(e->allocator);
-        DFuncValue dfn(e->allocator, getIrFunc(e->allocator)->func);
+        DFuncValue dfn(e->allocator, getLLFunc(e->allocator));
         DValue *res = DtoCallFunction(e->loc, nullptr, &dfn, e->newargs);
         mem = DtoBitCast(DtoRVal(res), DtoType(ntype->pointerTo()),
                          ".newstruct_custom");
@@ -1505,7 +1505,7 @@ public:
           IF_LOG Logger::println("Calling constructor");
           assert(e->arguments != NULL);
           DtoResolveFunction(e->member);
-          DFuncValue dfn(e->member, getIrFunc(e->member)->func, mem);
+          DFuncValue dfn(e->member, getLLFunc(e->member), mem);
           DtoCallFunction(e->loc, ts, &dfn, e->arguments);
         }
       }
@@ -1692,7 +1692,7 @@ public:
                             ->sym->inv) != nullptr) {
       Logger::print("calling struct invariant");
       DtoResolveFunction(invdecl);
-      DFuncValue invfunc(invdecl, getIrFunc(invdecl)->func, DtoRVal(cond));
+      DFuncValue invfunc(invdecl, getLLFunc(invdecl), DtoRVal(cond));
       DtoCallFunction(e->loc, nullptr, &invfunc, nullptr);
     }
   }
@@ -1915,7 +1915,7 @@ public:
         }
       }
 
-      castfptr = getIrFunc(e->func)->func;
+      castfptr = getLLFunc(e->func);
     }
 
     castfptr = DtoBitCast(castfptr, dgty->getContainedType(1));
@@ -2164,7 +2164,7 @@ public:
       DtoDeclareFunction(fd);
       assert(!fd->isNested());
     }
-    assert(getIrFunc(fd)->func);
+    assert(getLLFunc(fd));
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -2208,12 +2208,12 @@ public:
       cval = DtoBitCast(cval, dgty->getContainedType(0));
 
       LLValue *castfptr =
-          DtoBitCast(getIrFunc(fd)->func, dgty->getContainedType(1));
+          DtoBitCast(getLLFunc(fd), dgty->getContainedType(1));
 
       result = new DImValue(e->type, DtoAggrPair(cval, castfptr, ".func"));
 
     } else {
-      result = new DFuncValue(e->type, fd, getIrFunc(fd)->func);
+      result = new DFuncValue(e->type, fd, getLLFunc(fd));
     }
   }
 

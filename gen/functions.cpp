@@ -750,11 +750,11 @@ void DtoDefineFunction(FuncDeclaration *fd, bool linkageAvailableExternally) {
 
   if (fd->ir->isDefined()) {
     if (!linkageAvailableExternally &&
-        (getIrFunc(fd)->func->getLinkage() ==
+        (getLLFunc(fd)->getLinkage() ==
          llvm::GlobalValue::AvailableExternallyLinkage)) {
       // Fix linkage
       const auto lwc = lowerFuncLinkage(fd);
-      setLinkage(lwc, getIrFunc(fd)->func);
+      setLinkage(lwc, getLLFunc(fd));
     }
     return;
   }
@@ -881,7 +881,7 @@ void DtoDefineFunction(FuncDeclaration *fd, bool linkageAvailableExternally) {
 
   const auto f = static_cast<TypeFunction *>(fd->type->toBasetype());
   IrFuncTy &irFty = irFunc->irFty;
-  llvm::Function *func = irFunc->func;;
+  llvm::Function *func = irFunc->func;
 
   const auto lwc = lowerFuncLinkage(fd);
   if (linkageAvailableExternally) {

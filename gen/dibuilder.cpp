@@ -757,7 +757,7 @@ ldc::DISubprogram ldc::DIBuilder::EmitSubProgram(FuncDeclaration *fd) {
   auto SP = DBuilder.createFunction(
       CU,                                 // context
       fd->toPrettyChars(),                // name
-      getIrFunc(fd)->func->getName(),     // linkage name
+      getLLFunc(fd)->getName(),           // linkage name
       file,                               // file
       fd->loc.linnum,                     // line no
       DIFnType,                           // type
@@ -773,7 +773,7 @@ ldc::DISubprogram ldc::DIBuilder::EmitSubProgram(FuncDeclaration *fd) {
       );
 #if LDC_LLVM_VER >= 308
   if (fd->fbody)
-    getIrFunc(fd)->func->setSubprogram(SP);
+    getLLFunc(fd)->setSubprogram(SP);
 #endif
   return SP;
 }
@@ -817,12 +817,12 @@ ldc::DISubprogram ldc::DIBuilder::EmitThunk(llvm::Function *Thunk,
       isOptimizationEnabled()             // isOptimized
 #if LDC_LLVM_VER < 308
       ,
-      getIrFunc(fd)->func
+      getLLFunc(fd)
 #endif
       );
 #if LDC_LLVM_VER >= 308
   if (fd->fbody)
-    getIrFunc(fd)->func->setSubprogram(SP);
+    getLLFunc(fd)->setSubprogram(SP);
 #endif
   return SP;
 }
