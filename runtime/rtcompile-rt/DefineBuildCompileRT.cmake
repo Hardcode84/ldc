@@ -55,7 +55,7 @@ macro(build_compile_runtime d_flags c_flags ld_flags path_suffix outlist_targets
         LINK_FLAGS                  "${ld_flags} ${COMPRT_EXTRA_LDFLAGS}"
         )
 
-    llvm_map_components_to_libnames(llvm_libs support core irreader executionengine target nativecodegen)
+    llvm_map_components_to_libnames(llvm_libs support core irreader executionengine passes target nativecodegen)
     target_link_libraries(ldc-rtcompile-rt-so${target_suffix} ${llvm_libs})
 
     set(compilert_d_o "")

@@ -1,6 +1,8 @@
 
 #include <map>
 
+#include "optimizer.h"
+
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/IR/Verifier.h"
 
@@ -71,7 +73,7 @@ public:
   typedef CompileLayerT::ModuleSetHandleT ModuleHandle;
 
   MyJIT():
-    TM(llvm::EngineBuilder().selectTarget(llvm::Triple(),{},{},llvm::SmallVector<std::string,0>())),
+    TM(llvm::EngineBuilder().selectTarget()),
     DL(TM->createDataLayout()),
     CompileLayer(ObjectLayer, llvm::orc::SimpleCompiler(*TM))
   {
@@ -140,6 +142,8 @@ void rtCompileProcessImplSo(const void* modlist_head) {
   std::vector<std::pair<std::string, void**> > functions;
   std::vector<std::unique_ptr<llvm::Module>> ms;
   SymMap symMap;
+  OptimizerSettings settings;
+  settings.optLevel = 3;
   while (nullptr != current) {
     auto buff = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(current->irData, current->irDataSize), "", false);
     auto mod = llvm::parseBitcodeFile(*buff, myJit.getContext());
@@ -149,10 +153,12 @@ void rtCompileProcessImplSo(const void* modlist_head) {
     else {
       std::string err;
       llvm::raw_string_ostream errstream(err);
-      if (llvm::verifyModule(**mod, &errstream)) {
+      llvm::Module& module = **mod;
+      if (llvm::verifyModule(module, &errstream)) {
         //TODO
       }
-      (*mod)->setDataLayout(myJit.getTargetMachine().createDataLayout());
+      module.setDataLayout(myJit.getTargetMachine().createDataLayout());
+      optimizeModule(myJit.getTargetMachine(), settings, module);
       ms.push_back(std::move(*mod));
 
       for (int i = 0; i < current->funcListSize; ++i) {
