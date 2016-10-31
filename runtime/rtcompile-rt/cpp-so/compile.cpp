@@ -1,10 +1,13 @@
 
+#include <cassert>
+#include <stdexcept>
 #include <map>
 
 #include "optimizer.h"
+#include "context.h"
+#include "utils.h"
 
 #include "llvm/Support/ManagedStatic.h"
-#include "llvm/IR/Verifier.h"
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/RuntimeDyld.h"
@@ -20,6 +23,8 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Bitcode/ReaderWriter.h"
+
+namespace {
 
 #pragma pack(push,1)
 
@@ -59,32 +64,35 @@ struct llvm_init_obj {
 
 class MyJIT {
 private:
-  llvm_init_obj InitObj;
-  llvm::llvm_shutdown_obj ShutdownObj;
-  std::unique_ptr<llvm::TargetMachine> TM;
-  const llvm::DataLayout DL;
+  llvm_init_obj initObj;
+  llvm::llvm_shutdown_obj shutdownObj;
+  std::unique_ptr<llvm::TargetMachine> targetmachine;
+  const llvm::DataLayout dataLayout;
   using ObjectLayerT = llvm::orc::ObjectLinkingLayer<>;
-  ObjectLayerT ObjectLayer;
+  ObjectLayerT objectLayer;
   using CompileLayerT = llvm::orc::IRCompileLayer<ObjectLayerT>;
-  CompileLayerT CompileLayer;
-  llvm::LLVMContext Context;
+  CompileLayerT compileLayer;
+  llvm::LLVMContext context;
+  typedef CompileLayerT::ModuleSetHandleT ModuleHandleT;
+  bool compiled = false;
+  ModuleHandleT moduleHandle;
 
 public:
-  typedef CompileLayerT::ModuleSetHandleT ModuleHandle;
 
   MyJIT():
-    TM(llvm::EngineBuilder().selectTarget()),
-    DL(TM->createDataLayout()),
-    CompileLayer(ObjectLayer, llvm::orc::SimpleCompiler(*TM))
+    targetmachine(llvm::EngineBuilder().selectTarget()),
+    dataLayout(targetmachine->createDataLayout()),
+    compileLayer(objectLayer, llvm::orc::SimpleCompiler(*targetmachine))
   {
 
     llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
   }
 
-  llvm::TargetMachine& getTargetMachine() { return *TM; }
+  llvm::TargetMachine& getTargetMachine() { return *targetmachine; }
 
-  ModuleHandle addModules(std::vector<std::unique_ptr<llvm::Module>> &&modules,
+  void addModules(std::vector<std::unique_ptr<llvm::Module>> &&modules,
                           const SymMap& symMap) {
+    reset();
     // Build our symbol resolver:
     // Lambda 1: Look back into the JIT itself to find symbols that are part of
     //           the same "logical dylib".
@@ -92,7 +100,7 @@ public:
     auto Resolver = llvm::orc::createLambdaResolver(
                       [&](const std::string& name)->llvm::RuntimeDyld::SymbolInfo
     {
-      if (auto Sym = CompileLayer.findSymbol(name, false))
+      if (auto Sym = compileLayer.findSymbol(name, false))
       {
         return llvm::RuntimeDyld::SymbolInfo(Sym.getAddress(), Sym.getFlags());
       }
@@ -110,55 +118,82 @@ public:
 
     // Add the set to the JIT with the resolver we created above and a newly
     // created SectionMemoryManager.
-    return CompileLayer.addModuleSet(std::move(modules),
-                                     llvm::make_unique<llvm::SectionMemoryManager>(),
-                                     std::move(Resolver));
+    moduleHandle = compileLayer.addModuleSet(std::move(modules),
+                                             llvm::make_unique<llvm::SectionMemoryManager>(),
+                                             std::move(Resolver));
+    compiled = true;
   }
 
   llvm::orc::JITSymbol findSymbol(const std::string &name) {
-    return CompileLayer.findSymbol(name, false);
+    return compileLayer.findSymbol(name, false);
   }
 
-  llvm::LLVMContext& getContext() { return Context; }
+  llvm::LLVMContext& getContext() { return context; }
+
+//  void removeModule(ModuleHandle H) {
+//    CompileLayer.removeModuleSet(H);
+//  }
+
+  void reset() {
+    if (compiled) {
+      compileLayer.removeModuleSet(moduleHandle);
+      compiled = false;
+    }
+  }
 
 };
 
-static MyJIT& getJit()
+struct JitFinaliser final {
+  MyJIT& jit;
+  bool finalized = false;
+  explicit JitFinaliser(MyJIT& j):
+    jit(j) {}
+  ~JitFinaliser() {
+    if (!finalized) {
+      jit.reset();
+    }
+  }
+
+  void finalze() { finalized = true; }
+};
+
+MyJIT& getJit()
 {
   static MyJIT jit;
   return jit;
 }
 
-extern "C" {
-
-#ifdef _WIN32
-__declspec(dllexport)
-#endif
-void rtCompileProcessImplSo(const void* modlist_head) {
+void rtCompileProcessImplSoInternal(const RtComileModuleList* modlist_head, const Context& context) {
+  interruptPoint(context, "Init");
   MyJIT& myJit = getJit();
-  auto current =
-      static_cast<const RtComileModuleList*>(modlist_head);
+  auto current = modlist_head;
 
   std::vector<std::pair<std::string, void**> > functions;
   std::vector<std::unique_ptr<llvm::Module>> ms;
   SymMap symMap;
   OptimizerSettings settings;
-  settings.optLevel = 3;
+  settings.optLevel = context.optLevel;
+  settings.sizeLeve = context.sizeLeve;
   while (nullptr != current) {
+    interruptPoint(context, "load IR");
     auto buff = llvm::MemoryBuffer::getMemBuffer(llvm::StringRef(current->irData, current->irDataSize), "", false);
+    interruptPoint(context, "parse IR");
     auto mod = llvm::parseBitcodeFile(*buff, myJit.getContext());
     if (!mod) {
-      //TODO
+      fatal(context, "Unable to parse IR");
     }
     else {
-      std::string err;
-      llvm::raw_string_ostream errstream(err);
       llvm::Module& module = **mod;
-      if (llvm::verifyModule(module, &errstream)) {
-        //TODO
-      }
+      const auto name = module.getName();
+      interruptPoint(context,"Verify module", name.data());
+      ::verifyModule(context, module);
       module.setDataLayout(myJit.getTargetMachine().createDataLayout());
-      optimizeModule(myJit.getTargetMachine(), settings, module);
+
+      interruptPoint(context, "Optimize module", name.data());
+      optimizeModule(context, myJit.getTargetMachine(), settings, module);
+
+      interruptPoint(context, "Verify module", name.data());
+      ::verifyModule(context, module);
       ms.push_back(std::move(*mod));
 
       for (int i = 0; i < current->funcListSize; ++i) {
@@ -173,16 +208,45 @@ void rtCompileProcessImplSo(const void* modlist_head) {
     }
     current = current->next;
   }
+
+  interruptPoint(context, "Add modules");
   myJit.addModules(std::move(ms), symMap);
+  JitFinaliser jitFinalizer(myJit);
+  interruptPoint(context, "Resolve functions");
   for (auto&& fun: functions) {
     auto symbol = myJit.findSymbol(fun.first);
     const auto addr = symbol.getAddress();
     if (0 == addr) {
-      //TODO
+      std::string desc = std::string("Symbol not found in jitted code: ") + fun.first;
+      fatal(context, desc);
     }
     else {
       *fun.second = reinterpret_cast<void*>(addr);
     }
+  }
+  jitFinalizer.finalze();
+}
+
+} // anon namespace
+
+extern "C" {
+
+#ifdef _WIN32
+__declspec(dllexport)
+#endif
+void rtCompileProcessImplSo(const void* modlist_head,
+                            const Context* context,
+                            size_t contextSize) {
+  assert(nullptr != context);
+  assert(sizeof(*context) == contextSize);
+  try {
+    rtCompileProcessImplSoInternal(
+          static_cast<const RtComileModuleList*>(modlist_head),
+          *context);
+  }
+  catch (const std::exception& e) {
+    std::string desc = std::string("Exception was thrown: ") + e.what();
+    fatal(*context, desc);
   }
 }
 

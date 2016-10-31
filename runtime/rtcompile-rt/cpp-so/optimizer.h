@@ -12,13 +12,16 @@ class TargetMachine;
 class Module;
 }
 
+struct Context;
+
 struct OptimizerSettings final {
   unsigned optLevel = 0;
   unsigned sizeLeve = 0;
 };
 
-void optimizeModule(llvm::TargetMachine &targetMachine,
-                     const OptimizerSettings &settings,
-                     llvm::Module &module);
+void optimizeModule(const Context &context,
+                    llvm::TargetMachine &targetMachine,
+                    const OptimizerSettings &settings,
+                    llvm::Module &module);
 
 #endif // OPTIMIZER_HPP

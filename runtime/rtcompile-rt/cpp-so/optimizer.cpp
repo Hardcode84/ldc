@@ -11,6 +11,9 @@
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
+#include "context.h"
+#include "utils.h"
+
 namespace {
 
 void addOptimizationPasses(llvm::legacy::PassManagerBase &mpm,
@@ -118,23 +121,41 @@ void setupPasses(llvm::TargetMachine &targetMachine,
   addOptimizationPasses(mpm, fpm, settings.optLevel, settings.sizeLeve);
 }
 
+struct FuncFinalizer final {
+  llvm::legacy::FunctionPassManager& fpm;
+  explicit FuncFinalizer(llvm::legacy::FunctionPassManager& _fpm):
+    fpm(_fpm) {
+    fpm.doInitialization();
+  }
+  ~FuncFinalizer() {
+    fpm.doFinalization();
+  }
+
+};
+
 } // anon namespace
 
-void optimizeModule(llvm::TargetMachine &targetMachine, const OptimizerSettings &settings, llvm::Module &module)
+void optimizeModule(const Context &context,
+                    llvm::TargetMachine &targetMachine,
+                    const OptimizerSettings &settings,
+                    llvm::Module &module)
 {
   llvm::legacy::PassManager mpm;
   llvm::legacy::FunctionPassManager fpm(&module);
+  const auto name = module.getName();
+  interruptPoint(context, "Setup passes for module", name.data());
   setupPasses(targetMachine, settings, mpm, fpm);
 
   // Run per-function passes.
-  fpm.doInitialization();
-  for (auto &F : module) {
-    fpm.run(F);
+  {
+    FuncFinalizer finalizer(fpm);
+    for (auto &fun : module) {
+      interruptPoint(context, "Run passes for function", fun.getName().data());
+      fpm.run(fun);
+    }
   }
-  fpm.doFinalization();
 
   // Run per-module passes.
+  interruptPoint(context, "Run passes for module", name.data());
   mpm.run(module);
-
-//  llvm::verifyModule(M); TODO
 }
