@@ -1,18 +1,24 @@
 #include "optimizer.h"
 
 #include "llvm/Target/TargetMachine.h"
+
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/ADT/Triple.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Verifier.h"
+
+#include "llvm/ADT/Triple.h"
+
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
 
 #include "context.h"
 #include "utils.h"
+#include "valueparser.h"
 
 namespace {
 
@@ -117,6 +123,8 @@ void setupPasses(llvm::TargetMachine &targetMachine,
   if (/*stripDebug*/true) {
     mpm.add(llvm::createStripSymbolsPass(true));
   }
+  mpm.add(llvm::createStripDeadPrototypesPass());
+  mpm.add(llvm::createStripDeadDebugInfoPass());
 
   addOptimizationPasses(mpm, fpm, settings.optLevel, settings.sizeLeve);
 }
@@ -158,4 +166,45 @@ void optimizeModule(const Context &context,
   // Run per-module passes.
   interruptPoint(context, "Run passes for module", name.data());
   mpm.run(module);
+}
+
+void setRtCompileVar(const Context &context,
+                     llvm::Module &module,
+                     const char *name,
+                     const void *init) {
+  assert(nullptr != name);
+  assert(nullptr != init);
+  auto var = module.getGlobalVariable(name);
+  if (nullptr != var) {
+    auto type = var->getType()->getElementType();
+    auto initializer = parseInitializer(context,
+                                        module.getDataLayout(),
+                                        type,
+                                        init);
+    var->setConstant(true);
+    var->setInitializer(initializer);
+    var->setLinkage(llvm::GlobalValue::PrivateLinkage);
+//    auto tempVar = new llvm::GlobalVariable(
+//                     module,
+//                     type,
+//                     true,
+//                     llvm::GlobalValue::PrivateLinkage,
+//                     initializer,
+//                     ".str");
+//    llvm::Constant *idxs[] = {zero};
+//    auto constPtr = llvm::ConstantExpr::getGetElementPtr(nullptr,
+//                                                         tempVar,
+//                                                         idxs,
+//                                                         true);
+//    for (auto&& use: var->uses()) {
+//      use->dump();
+//      use->getType()->dump();
+//      auto i = llvm::cast<llvm::GlobalVariable>(use);
+//      i->replaceAllUsesWith(constPtr);
+//      i->eraseFromParent();
+//    }
+
+//          var->replaceAllUsesWith(initializer);
+//          var->eraseFromParent();
+  }
 }

@@ -24,4 +24,9 @@ void optimizeModule(const Context &context,
                     const OptimizerSettings &settings,
                     llvm::Module &module);
 
+void setRtCompileVar(const Context &context,
+                     llvm::Module& module,
+                     const char* name,
+                     const void* init);
+
 #endif // OPTIMIZER_HPP

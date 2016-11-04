@@ -7,6 +7,7 @@
 #include "declaration.h"
 #include "expression.h"
 #include "ir/irfunction.h"
+#include "ir/irvar.h"
 #include "module.h"
 
 #include "llvm/ADT/StringExtras.h"
@@ -264,6 +265,8 @@ void applyVarDeclUDAs(VarDeclaration *decl, llvm::GlobalVariable *gvar) {
                  "functions");
     } else if (name == attr::weak) {
       // @weak is applied elsewhere
+    } else if (name == attr::runtimeCompile) {
+      getIrGlobal(decl)->runtimeCompile = true;
     } else {
       sle->warning(
           "Ignoring unrecognized special attribute 'ldc.attributes.%s'",

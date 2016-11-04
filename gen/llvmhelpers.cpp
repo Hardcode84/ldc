@@ -43,6 +43,7 @@
 #include <stack>
 
 #include "llvm/Support/CommandLine.h"
+#include "gen/runtimecompile.h"
 
 llvm::cl::opt<llvm::GlobalVariable::ThreadLocalMode> clThreadModel(
     "fthread-model", llvm::cl::desc("Thread model"),
@@ -844,7 +845,8 @@ void DtoResolveVariable(VarDeclaration *vd) {
     llvm::GlobalVariable *gvar =
         getOrCreateGlobal(vd->loc, gIR->module, DtoMemType(vd->type), isLLConst,
                           linkage, nullptr, llName, vd->isThreadlocal());
-    getIrGlobal(vd)->value = gvar;
+    IrGlobal *varIr = getIrGlobal(vd);
+    varIr->value = gvar;
 
     // Set the alignment and use the target pointer size as lower bound.
     unsigned alignment =
@@ -852,6 +854,9 @@ void DtoResolveVariable(VarDeclaration *vd) {
     gvar->setAlignment(alignment);
 
     applyVarDeclUDAs(vd, gvar);
+    if (varIr->runtimeCompile) {
+      addRuntimeCompiledVar(gIR, varIr);
+    }
 
     IF_LOG Logger::cout() << *gvar << '\n';
   }

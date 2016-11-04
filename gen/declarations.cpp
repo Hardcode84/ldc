@@ -28,6 +28,8 @@
 #include "ir/irvar.h"
 #include "llvm/ADT/SmallString.h"
 
+#include "runtimecompile.h"
+
 //////////////////////////////////////////////////////////////////////////////
 
 namespace {
@@ -357,6 +359,9 @@ public:
 
           newGvar->setAlignment(gvar->getAlignment());
           applyVarDeclUDAs(decl, newGvar);
+          if (irGlobal->runtimeCompile) {
+            addRuntimeCompiledVar(gIR, irGlobal);
+          }
           newGvar->takeName(gvar);
 
           llvm::Constant *newValue =

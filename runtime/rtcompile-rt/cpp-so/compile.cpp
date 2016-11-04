@@ -40,6 +40,12 @@ struct RtCompileSymList
   void* sym;
 };
 
+struct RtCompileVarList
+{
+  const char* name;
+  const void* init;
+};
+
 struct RtComileModuleList
 {
   RtComileModuleList* next;
@@ -49,6 +55,8 @@ struct RtComileModuleList
   int funcListSize;
   RtCompileSymList* symList;
   int symListSize;
+  RtCompileVarList* varList;
+  int varListSize;
 };
 
 #pragma pack(pop)
@@ -143,6 +151,19 @@ public:
 
 };
 
+void setRtCompileVars(const Context &context,
+                      llvm::Module& module,
+                      llvm::ArrayRef<RtCompileVarList> vals) {
+  for (auto&& val: vals) {
+    setRtCompileVar(context, module, val.name, val.init);
+  }
+}
+
+template<typename T>
+llvm::ArrayRef<T> toArray(T* ptr, size_t size) {
+  return llvm::ArrayRef<T>(ptr, size);
+}
+
 struct JitFinaliser final {
   MyJIT& jit;
   bool finalized = false;
@@ -189,20 +210,24 @@ void rtCompileProcessImplSoInternal(const RtComileModuleList* modlist_head, cons
       ::verifyModule(context, module);
       module.setDataLayout(myJit.getTargetMachine().createDataLayout());
 
+      interruptPoint(context, "setRtCompileVars", name.data());
+      setRtCompileVars(context,
+                       module,
+                       toArray(current->varList, current->varListSize));
+
       interruptPoint(context, "Optimize module", name.data());
       optimizeModule(context, myJit.getTargetMachine(), settings, module);
 
       interruptPoint(context, "Verify module", name.data());
       ::verifyModule(context, module);
+//      module.dump();
       ms.push_back(std::move(*mod));
 
-      for (int i = 0; i < current->funcListSize; ++i) {
-        const auto& fun = current->funcList[i];
+      for (auto&& fun: toArray(current->funcList, current->funcListSize)) {
         functions.push_back(std::make_pair(fun.name, fun.func));
       }
 
-      for (int i = 0; i < current->symListSize; ++i) {
-        const auto& sym = current->symList[i];
+      for (auto&& sym: toArray(current->symList, current->symListSize)) {
         symMap.insert(std::make_pair(sym.name, sym.sym));
       }
     }

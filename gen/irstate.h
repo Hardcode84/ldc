@@ -204,6 +204,7 @@ struct IRState {
   };
 
   std::vector<RtCompiledFuncDesc> runtimeCompiledFunctions;
+  std::set<IrGlobal*> runtimeCompiledVars;
 
 /// Vector of options passed to the linker as metadata in object file.
 #if LDC_LLVM_VER >= 306
