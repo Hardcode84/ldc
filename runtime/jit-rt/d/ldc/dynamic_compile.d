@@ -83,7 +83,151 @@ void compileDynamicCode(in CompilerSettings settings = CompilerSettings.init)
   rtCompileProcessImpl(context, context.sizeof);
 }
 
+auto bind(F, Args...)(F func, Args args)
+{
+  import std.format;
+  static assert(isFunctionPointer!F);
+  alias FuncParams = Parameters!(F);
+  enum ParametersCount = FuncParams.length;
+  static assert(ParametersCount == Args.length, format("Invalid bind parameter count: %s, expected %s", Args.length, ParametersCount));
+  assert(func !is null);
+  enum Index = bindParamsInd!(0, 0, Args)();
+  alias BindTypes = typeof(mapBindParams(args).expand);
+  alias PartialF = ReturnType!F function(UnbindTypes!(Index, FuncParams));
+  return BindPtr!(F,PartialF, Index, BindTypes)(func, mapBindParams(args).expand);
+}
+
+immutable placeholder = _placeholder();
+private struct _placeholder
+{
+}
+
 private:
+import std.meta;
+import std.traits;
+import std.typecons;
+
+int[] bindParamsInd(int I, int Off, Args...)()
+{
+  static if (Args.length == 0)
+  {
+    return [];
+  }
+  else static if (is(Unqual!(Args[0]) == _placeholder))
+  {
+    return [-1] ~ bindParamsInd!(I + 1, Off, Args[1..$])();
+  }
+  else
+  {
+    return [Off] ~ bindParamsInd!(I + 1, Off + 1, Args[1..$])();
+  }
+}
+
+auto mapBindParams(Args...)(Args args)
+{
+  static if (Args.length == 0)
+  {
+    return tuple();
+  }
+  else static if (is(Unqual!(Args[0]) == _placeholder))
+  {
+    return mapBindParams(args[1..$]);
+  }
+  else
+  {
+    return tuple(args[0], mapBindParams(args[1..$]).expand);
+  }
+}
+
+template UnbindTypes(int[] Index, Args...)
+{
+  static assert(Index.length == Args.length);
+  static if(Args.length == 0)
+  {
+    alias UnbindTypes = AliasSeq!();
+  }
+  else static if (-1 == Index[0])
+  {
+    alias UnbindTypes = AliasSeq!(Args[0], UnbindTypes!(Index[1..$], Args[1..$]));
+  }
+  else
+  {
+    alias UnbindTypes = UnbindTypes!(Index[1..$], Args[1..$]);
+  }
+}
+
+struct Slice
+{
+  const(void)* data = null;
+  size_t size = 0;
+}
+
+struct BindPayload(OF, F, int[] Index, Args...)
+{
+  enum InvalidIndex = -1;
+  static assert(isFunctionPointer!OF);
+  static assert(isFunctionPointer!F);
+  alias FuncParams = Parameters!(OF);
+  enum ParametersCount = FuncParams.length;
+  static assert(Index.length == ParametersCount, "Invalid index size");
+
+  OF originalFunc = null;
+  F func = null;
+  Args args;
+  bool registered = false;
+
+  this(OF orFunc, Args a)
+  {
+    assert(orFunc !is null);
+    originalFunc = orFunc;
+    args = a;
+  }
+  this(this) @disable;
+  ~this()
+  {
+    if (registered)
+    {
+      unregisterBindPayload(&func);
+    }
+  }
+  void register()
+  {
+    assert(!registered);
+    Slice[ParametersCount] desc;
+    static foreach(i, ind; Index)
+    {
+      static if (InvalidIndex != ind)
+      {
+        desc[i].data = &(args[ind]);
+        desc[i].size = (args[ind]).sizeof;
+      }
+    }
+    registerBindPayload(&func, cast(void*)originalFunc, desc.ptr, desc.length);
+    registered = true;
+  }
+}
+
+struct BindPtr(OF, F, int[] Index, Args...)
+{
+  static assert(isFunctionPointer!OF);
+  static assert(isFunctionPointer!F);
+  alias FuncParams = Parameters!(F);
+  alias Ret = ReturnType!F;
+  alias Payload = BindPayload!(OF, F, Index, Args);
+  RefCounted!Payload payload;
+
+  this(OF func, Args args)
+  {
+    payload = Payload(func, args);
+    payload.register();
+  }
+
+  Ret opCall(FuncParams args)
+  {
+    assert(payload.func !is null);
+    return payload.func(args);
+  }
+}
 
 extern(C)
 {
@@ -118,5 +262,9 @@ struct Context
   void* dumpHandlerData = null;
 }
 extern void rtCompileProcessImpl(const ref Context context, size_t contextSize);
+
+void registerBindPayload(void* handle, void* originalFunc, const Slice* desc, size_t descSize);
+void unregisterBindPayload(void* handle);
+
 }
 
