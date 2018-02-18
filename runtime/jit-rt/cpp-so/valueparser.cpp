@@ -46,9 +46,10 @@ llvm::Constant *getPtr(llvm::LLVMContext &context, llvm::Type *targetType,
 }
 }
 
-llvm::Constant *parseInitializer(const Context &context,
-                                 const llvm::DataLayout &dataLayout,
-                                 llvm::Type *type, const void *data) {
+llvm::Constant *
+parseInitializer(const llvm::DataLayout &dataLayout, llvm::Type *type,
+                 const void *data,
+                 llvm::function_ref<void(const std::string &)> errHandler) {
   assert(nullptr != type);
   assert(nullptr != data);
   auto &llcontext = type->getContext();
@@ -64,8 +65,9 @@ llvm::Constant *parseInitializer(const Context &context,
     case 64:
       return getInt<uint64_t>(llcontext, data);
     default:
-      fatal(context,
-            std::string("Invalid int bit width: ") + std::to_string(width));
+      errHandler(std::string("Invalid int bit width: ") +
+                 std::to_string(width));
+      return nullptr;
     }
   }
   if (type->isFloatingPointTy()) {
@@ -76,8 +78,8 @@ llvm::Constant *parseInitializer(const Context &context,
     case 64:
       return getFloat<double>(llcontext, data);
     default:
-      fatal(context,
-            std::string("Invalid fp bit width: ") + std::to_string(width));
+      errHandler(std::string("Invalid fp bit width: ") + std::to_string(width));
+      return nullptr;
     }
   }
   if (type->isPointerTy()) {
@@ -92,7 +94,7 @@ llvm::Constant *parseInitializer(const Context &context,
       const auto elemType = stype->getElementType(i);
       const auto elemOffset = slayout->getElementOffset(i);
       const auto elemPtr = static_cast<const char *>(data) + elemOffset;
-      elements[i] = parseInitializer(context, dataLayout, elemType, elemPtr);
+      elements[i] = parseInitializer(dataLayout, elemType, elemPtr, errHandler);
     }
     return llvm::ConstantStruct::get(stype, elements);
   }
@@ -103,7 +105,7 @@ llvm::Constant *parseInitializer(const Context &context,
     llvm::SmallVector<llvm::Constant *, 16> elements(numElements);
     for (uint64_t i = 0; i < numElements; ++i) {
       const auto elemPtr = static_cast<const char *>(data) + step * i;
-      elements[i] = parseInitializer(context, dataLayout, elemType, elemPtr);
+      elements[i] = parseInitializer(dataLayout, elemType, elemPtr, errHandler);
     }
     return llvm::ConstantArray::get(llvm::cast<llvm::ArrayType>(type),
                                     elements);
@@ -111,6 +113,6 @@ llvm::Constant *parseInitializer(const Context &context,
   std::string tname;
   llvm::raw_string_ostream os(tname);
   type->print(os, true);
-  fatal(context, std::string("Unhandled type: ") + os.str());
+  errHandler(std::string("Unhandled type: ") + os.str());
   return nullptr;
 }
