@@ -94,7 +94,8 @@ auto bind(F, Args...)(F func, Args args)
   enum Index = bindParamsInd!(0, 0, Args)();
   alias BindTypes = typeof(mapBindParams(args).expand);
   alias PartialF = ReturnType!F function(UnbindTypes!(Index, FuncParams));
-  return BindPtr!(F,PartialF, Index, BindTypes)(func, mapBindParams(args).expand);
+  alias BindPtrType = BindPtr!PartialF;
+  return BindPtrType.make!Index(func, mapBindParams(args).expand);
 }
 
 immutable placeholder = _placeholder();
@@ -162,32 +163,63 @@ struct Slice
   size_t size = 0;
 }
 
+struct BindPayloadBase(F)
+{
+  void function(ref BindPayloadBase!F) dtor;
+  F func = null;
+  int counter = 1;
+}
+
 struct BindPayload(OF, F, int[] Index, Args...)
 {
   enum InvalidIndex = -1;
+  alias Base = BindPayloadBase!F;
   static assert(isFunctionPointer!OF);
   static assert(isFunctionPointer!F);
   alias FuncParams = Parameters!(OF);
   enum ParametersCount = FuncParams.length;
   static assert(Index.length == ParametersCount, "Invalid index size");
+  extern(C) private pure nothrow @nogc static
+  {
+      pragma(mangle, "gc_addRange") void pureGcAddRange( in void* p, size_t sz, const TypeInfo ti = null );
+      pragma(mangle, "gc_removeRange") void pureGcRemoveRange( in void* p );
+  }
 
+  Base base;
   OF originalFunc = null;
-  F func = null;
-  Args args;
+  struct ArgStore
+  {
+    Args args;
+  }
+  ArgStore argStore;
   bool registered = false;
 
   this(OF orFunc, Args a)
   {
     assert(orFunc !is null);
     originalFunc = orFunc;
-    args = a;
+    static if (hasIndirections!(ArgStore))
+    {
+        pureGcAddRange(&argStore, ArgStore.sizeof);
+    }
+    argStore.args = a;
+    void function(ref BindPayloadBase!F) dtor = (ref Base b)
+    {
+      auto derived = cast(typeof(this)*)&b;
+      .destroy(*derived);
+    };
+    base.dtor = dtor;
   }
   this(this) @disable;
   ~this()
   {
     if (registered)
     {
-      unregisterBindPayload(&func);
+      unregisterBindPayload(&base.func);
+    }
+    static if (hasIndirections!(ArgStore))
+    {
+      pureGcRemoveRange(&argStore);
     }
   }
   void register()
@@ -198,34 +230,86 @@ struct BindPayload(OF, F, int[] Index, Args...)
     {
       static if (InvalidIndex != ind)
       {
-        desc[i].data = &(args[ind]);
-        desc[i].size = (args[ind]).sizeof;
+        desc[i].data = &(argStore.args[ind]);
+        desc[i].size = (argStore.args[ind]).sizeof;
       }
     }
-    registerBindPayload(&func, cast(void*)originalFunc, desc.ptr, desc.length);
+    registerBindPayload(&base.func, cast(void*)originalFunc, desc.ptr, desc.length);
     registered = true;
   }
 }
 
-struct BindPtr(OF, F, int[] Index, Args...)
+struct BindPtr(F)
 {
-  static assert(isFunctionPointer!OF);
+package:
   static assert(isFunctionPointer!F);
   alias FuncParams = Parameters!(F);
   alias Ret = ReturnType!F;
-  alias Payload = BindPayload!(OF, F, Index, Args);
-  RefCounted!Payload payload;
-
-  this(OF func, Args args)
+  alias Payload = BindPayloadBase!(F);
+  import core.memory : pureMalloc;
+  extern(C) private pure nothrow @nogc static
   {
-    payload = Payload(func, args);
+    pragma(mangle, "free") void pureFree( void *ptr );
+  }
+
+  Payload* _payload = null;
+
+  static auto make(int[] Index, OF, Args...)(OF func, Args args)
+  {
+    import core.exception : onOutOfMemoryError;
+    import std.conv : emplace;
+    alias PayloadImpl = BindPayload!(OF, F, Index, Args);
+    auto payload = cast(PayloadImpl*) pureMalloc(PayloadImpl.sizeof);
+    if (payload is null)
+    {
+        onOutOfMemoryError();
+    }
+    scope(failure)
+    {
+      pureFree(payload);
+    }
+
+    emplace(payload, func, args);
     payload.register();
+    BindPtr!F ret;
+    ret._payload = cast(Payload*)payload;
+    return ret;
+  }
+
+public:
+  this(this)
+  {
+    if (_payload !is null)
+    {
+      ++_payload.counter;
+    }
+  }
+  ~this()
+  {
+    if (_payload !is null)
+    {
+      auto res = --_payload.counter;
+      assert(res >= 0);
+      if (res == 0)
+      {
+        _payload.dtor(*_payload);
+        pureFree(_payload);
+        _payload = null;
+      }
+    }
+  }
+
+  void opAssign(typeof(this) rhs)
+  {
+    import std.algorithm.mutation : swap;
+
+    swap(_payload, rhs._payload);
   }
 
   Ret opCall(FuncParams args)
   {
-    assert(payload.func !is null);
-    return payload.func(args);
+    assert(_payload.func !is null);
+    return _payload.func(args);
   }
 }
 
@@ -265,6 +349,5 @@ extern void rtCompileProcessImpl(const ref Context context, size_t contextSize);
 
 void registerBindPayload(void* handle, void* originalFunc, const Slice* desc, size_t descSize);
 void unregisterBindPayload(void* handle);
-
 }
 
