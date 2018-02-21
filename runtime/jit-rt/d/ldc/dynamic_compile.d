@@ -157,12 +157,6 @@ template UnbindTypes(int[] Index, Args...)
   }
 }
 
-struct Slice
-{
-  const(void)* data = null;
-  size_t size = 0;
-}
-
 struct BindPayloadBase(F)
 {
   void function(ref BindPayloadBase!F) dtor;
@@ -308,13 +302,47 @@ public:
 
   Ret opCall(FuncParams args)
   {
+    assert(_payload !is null);
     assert(_payload.func !is null);
     return _payload.func(args);
+  }
+
+  @property auto getRef()
+  {
+    assert(_payload !is null);
+    return BindPtrRef!F(&_payload.func);
+  }
+}
+
+struct BindPtrRef(F)
+{
+package:
+  static assert(isFunctionPointer!F);
+  alias FuncParams = Parameters!(F);
+  alias Ret = ReturnType!F;
+
+  F* func = null;
+  this(F* f)
+  {
+    func = f;
+  }
+
+public:
+  Ret opCall(FuncParams args)
+  {
+    assert(func !is null);
+    assert(*func !is null);
+    return (*func)(args);
   }
 }
 
 extern(C)
 {
+struct Slice
+{
+  const(void)* data = null;
+  size_t size = 0;
+}
 
 void progressHandlerWrapper(void* context, const char* desc, const char* obj)
 {
