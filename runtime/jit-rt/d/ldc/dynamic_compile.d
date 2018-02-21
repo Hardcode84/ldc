@@ -160,7 +160,7 @@ template UnbindTypes(int[] Index, Args...)
 struct BindPayloadBase(F)
 {
   void function(ref BindPayloadBase!F) dtor;
-  F func = null;
+  immutable F func = null;
   int counter = 1;
 }
 
@@ -321,8 +321,8 @@ package:
   alias FuncParams = Parameters!(F);
   alias Ret = ReturnType!F;
 
-  F* func = null;
-  this(F* f)
+  immutable(F)* func = null;
+  this(immutable(F)* f)
   {
     func = f;
   }
@@ -375,7 +375,9 @@ struct Context
 }
 extern void rtCompileProcessImpl(const ref Context context, size_t contextSize);
 
-void registerBindPayload(void* handle, void* originalFunc, const Slice* desc, size_t descSize);
-void unregisterBindPayload(void* handle);
+// HACK: we assume handles (which is pointer to pointer to function) are immutable from language perspective
+// but their values can and will be modified by jit runtime
+void registerBindPayload(immutable(void)* handle, void* originalFunc, const Slice* desc, size_t descSize);
+void unregisterBindPayload(immutable(void)* handle);
 }
 
