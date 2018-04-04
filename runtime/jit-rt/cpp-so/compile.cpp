@@ -236,7 +236,13 @@ public:
 
   llvm::LLVMContext &getContext() { return context; }
 
-  SymMap &getSymMap() { return symMap; }
+  void clearSymMap() {
+    symMap.clear();
+  }
+
+  void addSymbol(std::string &&name, void *value) {
+    symMap.emplace(std::make_pair(std::move(name), value));
+  }
 
   void reset() {
     if (compiled) {
@@ -401,8 +407,7 @@ void rtCompileProcessImplSoInternal(const RtCompileModuleList *modlist_head,
 
   std::vector<std::pair<std::string, void **>> functions;
   std::unique_ptr<llvm::Module> finalModule;
-  auto &symMap = myJit.getSymMap();
-  symMap.clear();
+  myJit.clearSymMap();
   OptimizerSettings settings;
   settings.optLevel = context.optLevel;
   settings.sizeLevel = context.sizeLevel;
@@ -447,7 +452,7 @@ void rtCompileProcessImplSoInternal(const RtCompileModuleList *modlist_head,
 
       for (auto &&sym : toArray(current.symList, static_cast<std::size_t>(
                                                      current.symListSize))) {
-        symMap.insert(std::make_pair(decorate(sym.name), sym.sym));
+        myJit.addSymbol(decorate(sym.name), sym.sym);
       }
     }
   });
