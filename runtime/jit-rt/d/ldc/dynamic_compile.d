@@ -377,7 +377,7 @@ extern void rtCompileProcessImpl(const ref Context context, size_t contextSize);
 
 // HACK: we assume handles (which is pointer to pointer to function) are immutable from language perspective
 // but their values can and will be modified by jit runtime
-void registerBindPayload(immutable(void)* handle, void* originalFunc, const Slice* desc, size_t descSize);
+void registerBindPayload(immutable(void)* handle, void* originalFunc, const Slice* params, size_t paramsSize);
 void unregisterBindPayload(immutable(void)* handle);
 }
 

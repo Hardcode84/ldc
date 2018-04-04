@@ -25,6 +25,7 @@
 #include "optimizer.h"
 #include "utils.h"
 
+#include "llvm/ADT/MapVector.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
@@ -171,6 +172,12 @@ private:
   ModuleHandleT moduleHandle;
   SymMap symMap;
 
+  struct BindDesc final {
+    void* originalFunc;
+    llvm::ArrayRef<Slice> params;
+  };
+  llvm::MapVector<void*, BindDesc> bindInstaces;
+
   struct ListenerCleaner final {
     MyJIT &owner;
     ListenerCleaner(MyJIT &o, llvm::raw_ostream *stream) : owner(o) {
@@ -250,6 +257,17 @@ public:
       moduleHandle = {};
       compiled = false;
     }
+  }
+
+  void registerBind(void *handle, void *originalFunc,
+                    const llvm::ArrayRef<Slice>& params) {
+    assert(bindInstaces.count(handle) == 0);
+    bindInstaces.insert({handle, {originalFunc, params}});
+  }
+
+  void unregisterBind(void *handle) {
+    assert(bindInstaces.count(handle) == 1);
+    bindInstaces.erase(handle);
   }
 
 private:
@@ -520,12 +538,16 @@ EXTERNAL void JIT_API_ENTRYPOINT(const void *modlist_head,
 }
 
 EXTERNAL void JIT_REG_BIND_PAYLOAD(void *handle, void *originalFunc,
-                                   const Slice *desc, size_t descSize) {
+                                   const Slice *params, size_t paramsSize) {
   assert(handle != nullptr);
   assert(originalFunc != nullptr);
+  MyJIT &myJit = getJit();
+  myJit.registerBind(handle, originalFunc, toArray(params, paramsSize));
 }
 
 EXTERNAL void JIT_UNREG_BIND_PAYLOAD(void *handle) {
   assert(handle != nullptr);
+  MyJIT &myJit = getJit();
+  myJit.unregisterBind(handle);
 }
 }
