@@ -228,7 +228,12 @@ struct BindPayload(OF, F, int[] Index, Args...)
         desc[i].size = (argStore.args[ind]).sizeof;
       }
     }
-    registerBindPayload(&base.func, cast(void*)originalFunc, desc.ptr, desc.length);
+
+    // HACK: create empty function and pass it to jit runtime, so we can find it later and extract
+    // parameter types
+    import ldc.attributes;
+    static @dynamicCompile void dummy(OF) {}
+    registerBindPayload(&base.func, cast(void*)originalFunc, cast(void*)&dummy, desc.ptr, desc.length);
     registered = true;
   }
 }
@@ -377,7 +382,7 @@ extern void rtCompileProcessImpl(const ref Context context, size_t contextSize);
 
 // HACK: we assume handles (which is pointer to pointer to function) are immutable from language perspective
 // but their values can and will be modified by jit runtime
-void registerBindPayload(immutable(void)* handle, void* originalFunc, const Slice* params, size_t paramsSize);
+void registerBindPayload(immutable(void)* handle, void* originalFunc, void* sigFunc, const Slice* params, size_t paramsSize);
 void unregisterBindPayload(immutable(void)* handle);
 }
 

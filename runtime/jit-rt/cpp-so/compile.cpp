@@ -174,7 +174,8 @@ private:
   SymMap symMap;
 
   struct BindDesc final {
-    void* originalFunc;
+    void *originalFunc;
+    void *sigFunc;
     llvm::ArrayRef<Slice> params;
   };
   llvm::MapVector<void*, BindDesc> bindInstaces;
@@ -260,10 +261,10 @@ public:
     }
   }
 
-  void registerBind(void *handle, void *originalFunc,
+  void registerBind(void *handle, void *originalFunc, void *sigFunc,
                     const llvm::ArrayRef<Slice>& params) {
     assert(bindInstaces.count(handle) == 0);
-    bindInstaces.insert({handle, {originalFunc, params}});
+    bindInstaces.insert({handle, {originalFunc, sigFunc, params}});
   }
 
   void unregisterBind(void *handle) {
@@ -539,11 +540,14 @@ EXTERNAL void JIT_API_ENTRYPOINT(const void *modlist_head,
 }
 
 EXTERNAL void JIT_REG_BIND_PAYLOAD(void *handle, void *originalFunc,
-                                   const Slice *params, size_t paramsSize) {
+                                   void *sigFunc, const Slice *params,
+                                   size_t paramsSize) {
   assert(handle != nullptr);
   assert(originalFunc != nullptr);
+  assert(sigFunc != nullptr);
   MyJIT &myJit = getJit();
-  myJit.registerBind(handle, originalFunc, toArray(params, paramsSize));
+  myJit.registerBind(handle, originalFunc, sigFunc,
+                     toArray(params, paramsSize));
 }
 
 EXTERNAL void JIT_UNREG_BIND_PAYLOAD(void *handle) {
