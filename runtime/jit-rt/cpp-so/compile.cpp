@@ -328,6 +328,22 @@ public:
     bindInstaces.erase(handle);
   }
 
+  void applyBind(const JitModuleInfo &moduleInfo,
+                 llvm::Module &module) {
+    auto &funcMap = moduleInfo.functionsMap();
+    for (auto &&bind : bindInstaces) {
+      auto bindPtr = bind.first;
+      auto &bindDesc = bind.second;
+      assert(bindDesc.originalFunc != nullptr);
+      assert(bindDesc.sigFunc != nullptr);
+      auto it = funcMap.find(bindDesc.originalFunc);
+      assert(funcMap.end() != it);
+      auto &funcDesc = *(it->second);
+      auto funcToInline = module.getFunction(funcDesc.name);
+      assert(funcToInline != nullptr);
+    }
+  }
+
 private:
   void removeModule(const ModuleHandleT &handle) {
     cantFail(compileLayer.removeModule(handle));
