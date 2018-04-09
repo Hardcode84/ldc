@@ -18,6 +18,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <type_traits>
+#include <unordered_map>
 
 #include "callback_ostream.h"
 #include "context.h"
@@ -105,20 +106,37 @@ void enumModules(const RtCompileModuleList *modlist_head,
 }
 
 struct JitModuleInfo {
+private:
   struct Func {
     llvm::StringRef name;
     void **thunkVar;
+    void *originalFunc;
   };
-  std::vector<Func> functions;
+  std::vector<Func> funcs;
+  mutable std::unordered_map<void*, const Func*> funcsMap;
 
+public:
   JitModuleInfo(const Context &context,
                 const RtCompileModuleList *modlist_head) {
     enumModules(modlist_head, context, [&](const RtCompileModuleList &current) {
       for (auto &&fun : toArray(current.funcList, static_cast<std::size_t>(
                                                       current.funcListSize))) {
-        functions.push_back({fun.name, fun.func});
+        funcs.push_back({fun.name, fun.func, fun.originalFunc});
       }
     });
+  }
+
+  const std::vector<Func> &functions() const {
+    return funcs;
+  }
+
+  const std::unordered_map<void*, const Func*> &functionsMap() const {
+    if (funcsMap.empty() && !funcs.empty()) {
+      for (auto &&fun : funcs) {
+        funcsMap.insert({fun.originalFunc, &fun});
+      }
+    }
+    return funcsMap;
   }
 };
 
@@ -521,7 +539,7 @@ void rtCompileProcessImplSoInternal(const RtCompileModuleList *modlist_head,
 
   JitFinaliser jitFinalizer(myJit);
   interruptPoint(context, "Resolve functions");
-  for (auto &&fun : moduleInfo.functions) {
+  for (auto &&fun : moduleInfo.functions()) {
     auto decorated = decorate(fun.name);
     auto symbol = myJit.findSymbol(decorated);
     auto addr = resolveSymbol(symbol);
