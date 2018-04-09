@@ -84,6 +84,44 @@ struct RtCompileModuleList {
 
 #pragma pack(pop)
 
+template <typename T>
+auto toArray(T *ptr, size_t size)
+    -> llvm::ArrayRef<typename std::remove_cv<T>::type> {
+  return llvm::ArrayRef<typename std::remove_cv<T>::type>(ptr, size);
+}
+
+template <typename F>
+void enumModules(const RtCompileModuleList *modlist_head,
+                 const Context &context, F &&fun) {
+  auto current = modlist_head;
+  while (current != nullptr) {
+    interruptPoint(context, "check version");
+    if (current->version != ApiVersion) {
+      fatal(context, "Module was built with different jit api version");
+    }
+    fun(*current);
+    current = current->next;
+  }
+}
+
+struct JitModuleInfo {
+  struct Func {
+    llvm::StringRef name;
+    void **thunkVar;
+  };
+  std::vector<Func> functions;
+
+  JitModuleInfo(const Context &context,
+                const RtCompileModuleList *modlist_head) {
+    enumModules(modlist_head, context, [&](const RtCompileModuleList &current) {
+      for (auto &&fun : toArray(current.funcList, static_cast<std::size_t>(
+                                                      current.funcListSize))) {
+        functions.push_back({fun.name, fun.func});
+      }
+    });
+  }
+};
+
 llvm::SmallVector<std::string, 4> getHostAttrs() {
   llvm::SmallVector<std::string, 4> features;
   llvm::StringMap<bool> hostFeatures;
@@ -345,11 +383,7 @@ void setRtCompileVars(const Context &context, llvm::Module &module,
   }
 }
 
-template <typename T>
-auto toArray(T *ptr, size_t size)
-    -> llvm::ArrayRef<typename std::remove_cv<T>::type> {
-  return llvm::ArrayRef<typename std::remove_cv<T>::type>(ptr, size);
-}
+
 
 void *resolveSymbol(llvm::JITSymbol &symbol) {
   auto addr = symbol.getAddress();
@@ -402,20 +436,6 @@ struct JitFinaliser final {
   void finalze() { finalized = true; }
 };
 
-template <typename F>
-void enumModules(const RtCompileModuleList *modlist_head,
-                 const Context &context, F &&fun) {
-  auto current = modlist_head;
-  while (current != nullptr) {
-    interruptPoint(context, "check version");
-    if (current->version != ApiVersion) {
-      fatal(context, "Module was built with different jit api version");
-    }
-    fun(*current);
-    current = current->next;
-  }
-}
-
 void rtCompileProcessImplSoInternal(const RtCompileModuleList *modlist_head,
                                     const Context &context) {
   if (nullptr == modlist_head) {
@@ -425,7 +445,7 @@ void rtCompileProcessImplSoInternal(const RtCompileModuleList *modlist_head,
   interruptPoint(context, "Init");
   MyJIT &myJit = getJit();
 
-  std::vector<std::pair<std::string, void **>> functions;
+  JitModuleInfo moduleInfo(context, modlist_head);
   std::unique_ptr<llvm::Module> finalModule;
   myJit.clearSymMap();
   OptimizerSettings settings;
@@ -465,11 +485,6 @@ void rtCompileProcessImplSoInternal(const RtCompileModuleList *modlist_head,
         }
       }
 
-      for (auto &&fun : toArray(current.funcList, static_cast<std::size_t>(
-                                                      current.funcListSize))) {
-        functions.push_back(std::make_pair(fun.name, fun.func));
-      }
-
       for (auto &&sym : toArray(current.symList, static_cast<std::size_t>(
                                                      current.symListSize))) {
         myJit.addSymbol(decorate(sym.name), sym.sym);
@@ -506,21 +521,21 @@ void rtCompileProcessImplSoInternal(const RtCompileModuleList *modlist_head,
 
   JitFinaliser jitFinalizer(myJit);
   interruptPoint(context, "Resolve functions");
-  for (auto &&fun : functions) {
-    auto decorated = decorate(fun.first);
+  for (auto &&fun : moduleInfo.functions) {
+    auto decorated = decorate(fun.name);
     auto symbol = myJit.findSymbol(decorated);
     auto addr = resolveSymbol(symbol);
     if (nullptr == addr) {
       std::string desc = std::string("Symbol not found in jitted code: \"") +
-                         fun.first + "\" (\"" + decorated + "\")";
+                         fun.name.data() + "\" (\"" + decorated + "\")";
       fatal(context, desc);
     } else {
-      *fun.second = addr;
+      *fun.thunkVar = addr;
     }
 
     if (nullptr != context.interruptPointHandler) {
       std::stringstream ss;
-      ss << fun.first << " to " << addr;
+      ss << fun.name.data() << " to " << addr;
       auto str = ss.str();
       interruptPoint(context, "Resolved", str.c_str());
     }
