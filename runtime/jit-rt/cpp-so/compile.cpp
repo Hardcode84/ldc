@@ -113,7 +113,7 @@ private:
     void *originalFunc;
   };
   std::vector<Func> funcs;
-  mutable std::unordered_map<void*, const Func*> funcsMap;
+  mutable std::unordered_map<const void*, const Func*> funcsMap;
 
 public:
   JitModuleInfo(const Context &context,
@@ -130,13 +130,23 @@ public:
     return funcs;
   }
 
-  const std::unordered_map<void*, const Func*> &functionsMap() const {
+  const std::unordered_map<const void*, const Func*> &functionsMap() const {
     if (funcsMap.empty() && !funcs.empty()) {
       for (auto &&fun : funcs) {
         funcsMap.insert({fun.originalFunc, &fun});
       }
     }
     return funcsMap;
+  }
+
+  const Func *getFunc(const void* ptr) const {
+    assert(ptr != nullptr);
+    auto &funcMap = functionsMap();
+    auto it = funcMap.find(ptr);
+    if (funcMap.end() != it) {
+      return it->second;
+    }
+    return nullptr;
   }
 };
 
@@ -330,17 +340,29 @@ public:
 
   void applyBind(const JitModuleInfo &moduleInfo,
                  llvm::Module &module) {
-    auto &funcMap = moduleInfo.functionsMap();
+    auto getIrFunc = [&](const void *ptr) {
+      assert(ptr != nullptr);
+      auto funcDesc = moduleInfo.getFunc(ptr);
+      assert(funcDesc != nullptr);
+      return module.getFunction(funcDesc->name);
+    };
     for (auto &&bind : bindInstaces) {
       auto bindPtr = bind.first;
       auto &bindDesc = bind.second;
       assert(bindDesc.originalFunc != nullptr);
       assert(bindDesc.sigFunc != nullptr);
-      auto it = funcMap.find(bindDesc.originalFunc);
-      assert(funcMap.end() != it);
-      auto &funcDesc = *(it->second);
-      auto funcToInline = module.getFunction(funcDesc.name);
-      assert(funcToInline != nullptr);
+
+      auto funcSig = getIrFunc(bindDesc.sigFunc);
+      assert(funcSig != nullptr);
+
+
+
+      auto funcToInline = getIrFunc(bindDesc.originalFunc);
+      if (funcToInline != nullptr) {
+
+      } else {
+        assert(false); //TODO
+      }
     }
   }
 
